@@ -5,6 +5,7 @@ use App\Http\Controllers\TrabajadorController;
 use App\Http\Controllers\TrabajadorBonoController;
 use App\Http\Controllers\TipoHoraController;
 use App\Http\Controllers\NominaController;
+use App\Http\Controllers\NominaImportacionController;
 use App\Http\Controllers\CuadrillaController;
 use App\Http\Controllers\ClienteController;
 use App\Http\Controllers\ClienteEmailController;
@@ -100,6 +101,22 @@ Route::middleware(['auth', 'verified', 'role:Administrador|RRHH|Contabilidad'])-
 // Descarga de nómina: admin/RRHH/Contabilidad o el propio trabajador (autorización en el controlador)
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('nominas/{nomina}/download', [NominaController::class, 'download'])->name('nominas.download');
+    // Recibo PDF generado: admin/RRHH/Contabilidad o el propio trabajador (autorización en el controlador)
+    Route::get('nominas/{nomina}/recibo', [NominaImportacionController::class, 'recibo'])->name('nominas.recibo');
+});
+
+// ==========================================
+// NÓMINAS — CARGA MASIVA (aditivo, no toca el flujo manual existente)
+// ==========================================
+Route::middleware(['auth', 'verified', 'role:Administrador|RRHH|Contabilidad'])->group(function () {
+    Route::get('nominas/plantilla', [NominaImportacionController::class, 'plantilla'])->name('nominas.plantilla');
+    Route::post('nominas/importar', [NominaImportacionController::class, 'procesar'])->name('nominas.importar');
+    Route::get('nominas/mes/{anio}/{mes}', [NominaImportacionController::class, 'porMes'])->name('nominas.mes');
+    Route::post('nominas/mes/{anio}/{mes}/enviar', [NominaImportacionController::class, 'enviarMes'])->name('nominas.mes.enviar');
+    Route::post('nominas/{nomina}/enviar', [NominaImportacionController::class, 'enviar'])->name('nominas.enviar');
+    Route::get('nominas/bitacora', [NominaImportacionController::class, 'bitacora'])->name('nominas.bitacora');
+    Route::get('nominas/bitacora/{importacion}', [NominaImportacionController::class, 'bitacoraDetalle'])->name('nominas.bitacora.detalle');
+    Route::put('nominas/{nomina}', [NominaImportacionController::class, 'update'])->name('nominas.update');
 });
 
 // ==========================================

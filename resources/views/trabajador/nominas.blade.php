@@ -12,27 +12,25 @@
         <a href="{{ route('trabajador.dashboard') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-2"></i>Mi Portal</a>
     </div>
 
+    @php $disponibles = $nominas->filter(fn($n) => $n->enviado_at)->values(); @endphp
     <div class="card border-0 shadow-sm">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
-                    <tr><th>Periodo</th><th class="text-end">Líquido percibido</th><th class="text-center">Nómina</th></tr>
+                    <tr><th>Periodo</th><th class="text-end">Líquido percibido</th><th>Fecha de envío</th><th class="text-center">Recibo</th></tr>
                 </thead>
                 <tbody>
-                    @forelse($nominas as $nom)
+                    @forelse($disponibles as $nom)
                     <tr>
                         <td class="fw-medium">{{ $nom->mes_nombre }} {{ $nom->anio }}</td>
                         <td class="text-end fw-bold">{{ number_format($nom->liquido, 2, ',', '.') }} €</td>
+                        <td class="small text-muted">{{ $nom->enviado_at->format('d/m/Y') }}</td>
                         <td class="text-center">
-                            @if($nom->documento_path)
-                                <a href="{{ route('nominas.download', $nom) }}" class="btn btn-sm btn-primary"><i class="bi bi-download me-1"></i>Descargar PDF</a>
-                            @else
-                                <span class="text-muted">No disponible</span>
-                            @endif
+                            <a href="{{ route('nominas.recibo', $nom) }}" target="_blank" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Descargar recibo</a>
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="3" class="text-center text-muted py-4">Aún no tienes nóminas registradas.</td></tr>
+                    <tr><td colspan="4" class="text-center text-muted py-4">Aún no tienes nóminas disponibles.</td></tr>
                     @endforelse
                 </tbody>
             </table>

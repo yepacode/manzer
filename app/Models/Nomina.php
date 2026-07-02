@@ -20,6 +20,8 @@ class Nomina extends Model
         'liquido',
         'documento_path',
         'notas',
+        'importacion_id',
+        'enviado_at',
     ];
 
     protected $casts = [
@@ -30,6 +32,7 @@ class Nomina extends Model
         'ss_trabajador' => 'decimal:2',
         'irpf' => 'decimal:2',
         'liquido' => 'decimal:2',
+        'enviado_at' => 'datetime',
     ];
 
     public const MESES = [
@@ -41,6 +44,11 @@ class Nomina extends Model
     public function trabajador(): BelongsTo
     {
         return $this->belongsTo(Trabajador::class);
+    }
+
+    public function importacion(): BelongsTo
+    {
+        return $this->belongsTo(NominaImportacion::class, 'importacion_id');
     }
 
     /**
