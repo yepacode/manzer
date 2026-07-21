@@ -267,7 +267,11 @@ class NominaImportacionController extends Controller
             return back()->with('error', 'El trabajador no tiene correo registrado; no se pudo enviar.');
         }
 
-        Mail::to($email)->send(new ReciboNominaMail($nomina));
+        try {
+            Mail::to($email)->send(new ReciboNominaMail($nomina));
+        } catch (\Throwable $e) {
+            return back()->with('error', "No se pudo enviar el correo a {$email}. Revisa la configuración de correo.");
+        }
 
         if (!$nomina->enviado_at) {
             $nomina->update(['enviado_at' => now()]);
@@ -289,6 +293,7 @@ class NominaImportacionController extends Controller
 
         $enviadas = 0;
         $sinCorreo = 0;
+        $fallidos = 0;
 
         foreach ($nominas as $n) {
             $email = $n->trabajador?->email;
@@ -296,14 +301,22 @@ class NominaImportacionController extends Controller
                 $sinCorreo++;
                 continue;
             }
-            Mail::to($email)->send(new ReciboNominaMail($n));
-            $n->update(['enviado_at' => now()]);
-            $enviadas++;
+            try {
+                Mail::to($email)->send(new ReciboNominaMail($n));
+                $n->update(['enviado_at' => now()]);
+                $enviadas++;
+            } catch (\Throwable $e) {
+                // Un correo fallido no detiene el lote; se contabiliza.
+                $fallidos++;
+            }
         }
 
         $msg = "{$enviadas} recibo(s) enviado(s).";
         if ($sinCorreo) {
             $msg .= " {$sinCorreo} sin correo (no enviados).";
+        }
+        if ($fallidos) {
+            $msg .= " {$fallidos} con error de envío.";
         }
 
         return back()->with('success', $msg);
@@ -520,7 +533,7 @@ class NominaImportacionController extends Controller
             'ss_empresa' => 'nullable|numeric|min:0',
             'ss_trabajador' => 'nullable|numeric|min:0',
             'irpf' => 'nullable|numeric|min:0',
-            'notas' => 'nullable|string',
+            'notas' => 'nullable|string|max:2000',
         ]);
 
         $bruto = (float) $validated['salario_bruto'];

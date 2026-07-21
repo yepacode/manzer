@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Nomina;
 use App\Models\Trabajador;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class NominaController extends Controller
 {
@@ -21,7 +22,7 @@ class NominaController extends Controller
             'ss_trabajador' => 'nullable|numeric|min:0',
             'irpf' => 'nullable|numeric|min:0',
             'documento' => 'nullable|file|mimes:pdf|max:5120',
-            'notas' => 'nullable|string',
+            'notas' => 'nullable|string|max:2000',
         ], [
             'documento.mimes' => 'La nómina debe ser un PDF.',
             'documento.max' => 'El PDF no puede superar 5MB.',
@@ -50,9 +51,8 @@ class NominaController extends Controller
         if ($request->hasFile('documento')) {
             $archivo = $request->file('documento');
             $nombre = 'nomina_' . $validated['anio'] . '_' . $validated['mes'] . '_' . time() . '.' . $archivo->getClientOriginalExtension();
-            $ruta = 'uploads/trabajadores/' . $trabajador->id . '/nominas';
-            $archivo->move(public_path($ruta), $nombre);
-            $data['documento_path'] = $ruta . '/' . $nombre;
+            // Disco privado (storage/app), NO accesible por URL directa; se sirve solo por download().
+            $data['documento_path'] = $archivo->storeAs('private/nominas/' . $trabajador->id, $nombre);
         }
 
         Nomina::create($data);
@@ -74,7 +74,7 @@ class NominaController extends Controller
             'ss_trabajador' => 'nullable|numeric|min:0',
             'irpf' => 'nullable|numeric|min:0',
             'documento' => 'nullable|file|mimes:pdf|max:5120',
-            'notas' => 'nullable|string',
+            'notas' => 'nullable|string|max:2000',
         ], [
             'trabajador_id.required' => 'Selecciona un trabajador.',
             'documento.mimes' => 'La nómina debe ser un PDF.',
@@ -106,9 +106,8 @@ class NominaController extends Controller
         if ($request->hasFile('documento')) {
             $archivo = $request->file('documento');
             $nombre = 'nomina_' . $validated['anio'] . '_' . $validated['mes'] . '_' . time() . '.' . $archivo->getClientOriginalExtension();
-            $ruta = 'uploads/trabajadores/' . $trabajador->id . '/nominas';
-            $archivo->move(public_path($ruta), $nombre);
-            $data['documento_path'] = $ruta . '/' . $nombre;
+            // Disco privado (storage/app), NO accesible por URL directa; se sirve solo por download().
+            $data['documento_path'] = $archivo->storeAs('private/nominas/' . $trabajador->id, $nombre);
         }
 
         Nomina::create($data);
@@ -122,8 +121,12 @@ class NominaController extends Controller
      */
     public function destroy(Nomina $nomina)
     {
-        if ($nomina->documento_path && file_exists(public_path($nomina->documento_path))) {
-            @unlink(public_path($nomina->documento_path));
+        if ($nomina->documento_path) {
+            if (Storage::disk('local')->exists($nomina->documento_path)) {
+                Storage::disk('local')->delete($nomina->documento_path);
+            } elseif (file_exists(public_path($nomina->documento_path))) {
+                @unlink(public_path($nomina->documento_path));
+            }
         }
         $nomina->delete();
 
@@ -139,18 +142,27 @@ class NominaController extends Controller
         $miTrabajador = Trabajador::where('user_id', $user->id)->first();
         $esPropia = $miTrabajador && $miTrabajador->id === $nomina->trabajador_id;
 
-        if (!$esPropia && !$user->hasAnyRole(['Administrador', 'RRHH', 'Contabilidad'])) {
+        $esGestion = $user->hasAnyRole(['Administrador', 'RRHH', 'Contabilidad']);
+        if (!$esPropia && !$esGestion) {
             abort(403, 'No tienes permiso para descargar esta nómina.');
         }
-
-        if (!$nomina->documento_path || !file_exists(public_path($nomina->documento_path))) {
-            abort(404, 'No hay documento adjunto en esta nómina.');
+        // El trabajador solo puede descargar su recibo si ya fue enviado (igual que recibo()).
+        if ($esPropia && !$esGestion && !$nomina->enviado_at) {
+            abort(403, 'Este recibo aún no está disponible.');
         }
 
-        return response()->download(
-            public_path($nomina->documento_path),
-            'nomina_' . $nomina->mes_nombre . '_' . $nomina->anio . '.pdf'
-        );
+        $nombreDescarga = 'nomina_' . $nomina->mes_nombre . '_' . $nomina->anio . '.pdf';
+        $path = $nomina->documento_path;
+
+        if ($path && Storage::disk('local')->exists($path)) {
+            return Storage::disk('local')->download($path, $nombreDescarga);
+        }
+        // Compatibilidad con archivos antiguos guardados bajo public/
+        if ($path && file_exists(public_path($path))) {
+            return response()->download(public_path($path), $nombreDescarga);
+        }
+
+        abort(404, 'No hay documento adjunto en esta nómina.');
     }
 
     /**
