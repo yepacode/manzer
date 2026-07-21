@@ -195,8 +195,9 @@ class GestoriaNominaParser
             return null;
         }
         // Texto en formato europeo: '.' = separador de miles, ',' = decimal.
-        $s = str_replace(['.', ' '], '', $s);
-        $s = str_replace(',', '.', $s);
+        $s = preg_replace('/[\s\x{00A0}]/u', '', $s); // quita espacios, incl. el duro (NBSP)
+        $s = str_replace('.', '', $s);                 // separador de miles
+        $s = str_replace(',', '.', $s);                // coma decimal
         return is_numeric($s) ? (float) $s : null;
     }
 

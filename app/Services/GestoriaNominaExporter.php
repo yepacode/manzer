@@ -7,6 +7,7 @@ use App\Models\NominaConcepto;
 use App\Models\Trabajador;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -137,7 +138,13 @@ class GestoriaNominaExporter
         // Volcar datos (grid 0-based -> Excel 1-based)
         foreach ($grid as $i => $fila) {
             foreach ($fila as $j => $val) {
-                if ($val !== '' && $val !== null) {
+                if ($val === '' || $val === null) {
+                    continue;
+                }
+                // Anti inyección de fórmulas: texto que empieza por = + - @ se fuerza a cadena.
+                if (is_string($val) && $val !== '' && in_array($val[0], ['=', '+', '-', '@'], true)) {
+                    $sheet->setCellValueExplicitByColumnAndRow($j + 1, $i + 1, $val, DataType::TYPE_STRING);
+                } else {
                     $sheet->setCellValueByColumnAndRow($j + 1, $i + 1, $val);
                 }
             }

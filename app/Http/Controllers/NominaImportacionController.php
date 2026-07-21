@@ -86,6 +86,7 @@ class NominaImportacionController extends Controller
         $errores = [];    // errores duros -> bloquean toda la carga
         $aCrear = [];     // filas válidas listas para insertar
         $omitidas = [];   // trabajadores que ya tienen nómina ese mes/año
+        $vistos = [];     // claves ya encoladas en este archivo (evita duplicar en memoria)
         $numFila = 1;     // fila 1 = encabezado; los datos empiezan en la 2
 
         foreach ($filas as $fila) {
@@ -145,6 +146,17 @@ class NominaImportacionController extends Controller
                 ];
                 continue;
             }
+
+            // Deduplicar dentro del MISMO archivo (mismo trabajador/mes/año repetido)
+            $clave = $trabajador->id . '|' . $anio . '|' . $mes;
+            if (isset($vistos[$clave])) {
+                $omitidas[] = [
+                    'fila' => $numFila, 'dni' => $dni,
+                    'motivo' => 'Fila repetida en el archivo (mismo trabajador y periodo); se omite.',
+                ];
+                continue;
+            }
+            $vistos[$clave] = true;
 
             $aCrear[] = [
                 'trabajador_id' => $trabajador->id,
@@ -330,6 +342,7 @@ class NominaImportacionController extends Controller
         $errores = [];
         $omitidas = [];
         $aCrear = [];
+        $vistos = [];
 
         foreach ($matched as $m) {
             $a = $m['archivo'];
@@ -356,6 +369,14 @@ class NominaImportacionController extends Controller
                 $omitidas[] = ['fila' => $a['codigo'], 'dni' => $a['nombre_completo'], 'motivo' => "Ya existe la nómina (código {$a['codigo']}) de este trabajador en el periodo."];
                 continue;
             }
+
+            // Deduplicar dentro del MISMO archivo (misma persona + mismo código de línea)
+            $clave = $t->id . '|' . ($a['codigo'] ?? '');
+            if (isset($vistos[$clave])) {
+                $omitidas[] = ['fila' => $a['codigo'], 'dni' => $a['nombre_completo'], 'motivo' => "Fila repetida en el archivo (código {$a['codigo']}); se omite."];
+                continue;
+            }
+            $vistos[$clave] = true;
 
             $aCrear[] = ['t' => $t, 'a' => $a];
         }
@@ -506,12 +527,23 @@ class NominaImportacionController extends Controller
         $ssTrab = (float) ($validated['ss_trabajador'] ?? 0);
         $irpf = (float) ($validated['irpf'] ?? 0);
 
+        // Si la nómina tiene desglose de conceptos (gestoría), el líquido debe usar
+        // TODAS las deducciones (incluye especie), no solo SS+IRPF; recalcular a la
+        // simple corromería el importe. Para nóminas manuales (sin conceptos) sí aplica.
+        $nomina->loadMissing('conceptos');
+        if ($nomina->conceptos->isNotEmpty()) {
+            $totalDeducciones = (float) $nomina->conceptos->where('tipo', 'deduccion')->sum('importe');
+            $liquido = round($bruto - $totalDeducciones, 2);
+        } else {
+            $liquido = round($bruto - $ssTrab - $irpf, 2);
+        }
+
         $nomina->update([
             'salario_bruto' => $bruto,
             'ss_empresa' => (float) ($validated['ss_empresa'] ?? 0),
             'ss_trabajador' => $ssTrab,
             'irpf' => $irpf,
-            'liquido' => round($bruto - $ssTrab - $irpf, 2),
+            'liquido' => $liquido,
             'notas' => $validated['notas'] ?? null,
         ]);
 
@@ -536,8 +568,9 @@ class NominaImportacionController extends Controller
             return null;
         }
         // Texto en formato europeo: '.' = separador de miles, ',' = decimal.
-        $s = str_replace(['.', ' '], '', $s);
-        $s = str_replace(',', '.', $s);
+        $s = preg_replace('/[\s\x{00A0}]/u', '', $s); // quita espacios, incl. el duro (NBSP)
+        $s = str_replace('.', '', $s);                 // separador de miles
+        $s = str_replace(',', '.', $s);                // coma decimal
         return is_numeric($s) ? (float) $s : null;
     }
 }
