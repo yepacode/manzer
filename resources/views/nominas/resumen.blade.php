@@ -188,12 +188,12 @@
                                 <div class="card-body">
                                     <h6 class="mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>Instrucciones</h6>
                                     <ol class="small mb-0 ps-3">
-                                        <li>Descarga la plantilla con el mes y año elegidos.</li>
-                                        <li>No modifiques las columnas <strong>DNI</strong>, <strong>Nombre</strong> ni <strong>Apellidos</strong> (son de referencia).</li>
-                                        <li>Rellena <strong>Salario Bruto</strong>, <strong>SS Empresa</strong>, <strong>SS Trabajador</strong> e <strong>IRPF</strong>.</li>
-                                        <li>El <strong>líquido</strong> se calcula solo (Bruto − SS Trabajador − IRPF).</li>
-                                        <li>Los trabajadores que ya tengan nómina ese mes se <strong>omiten</strong> (no se pisan).</li>
-                                        <li>Sube el archivo. Si hay errores, <strong>no se importa nada</strong>.</li>
+                                        <li>Descarga el Excel del mes (a la derecha): los que tienen nómina salen <strong>llenos</strong>, el resto <strong>en blanco</strong>.</li>
+                                        <li>Rellena las columnas en blanco, o usa directamente el <strong>Excel del gestoría</strong>.</li>
+                                        <li>No cambies los <strong>nombres</strong> de los trabajadores (se emparejan por ahí).</li>
+                                        <li>Súbelo abajo. El sistema detecta <strong>periodo y empresa</strong> solo.</li>
+                                        <li>Los que ya tengan esa nómina se <strong>omiten</strong> (no se duplican).</li>
+                                        <li>Si algún trabajador no existe en el sistema, <strong>no se importa nada</strong>.</li>
                                     </ol>
                                 </div>
                             </div>
@@ -201,12 +201,12 @@
                         <div class="col-md-5">
                             <div class="card h-100 border">
                                 <div class="card-body">
-                                    <h6 class="mb-1"><i class="bi bi-file-earmark-excel me-2 text-success"></i>Plantilla</h6>
-                                    <p class="small text-muted mb-3">Excel con una fila por trabajador activo.</p>
-                                    <form method="GET" action="{{ route('nominas.plantilla') }}" class="row g-2 align-items-end">
+                                    <h6 class="mb-1"><i class="bi bi-file-earmark-excel me-2 text-success"></i>Descargar Excel del mes</h6>
+                                    <p class="small text-muted mb-3">Baja la plantilla del mes elegido: los trabajadores con nómina salen <strong>llenos</strong> y el resto <strong>en blanco</strong> para completar. Mismo formato para subir y bajar.</p>
+                                    <div class="row g-2 align-items-end">
                                         <div class="col-6">
                                             <label class="form-label small mb-1">Mes</label>
-                                            <select name="mes" class="form-select form-select-sm" required>
+                                            <select id="expMes" class="form-select form-select-sm">
                                                 @foreach(\App\Models\Nomina::MESES as $num => $nombre)
                                                     <option value="{{ $num }}" {{ (int) now()->month === $num ? 'selected' : '' }}>{{ $nombre }}</option>
                                                 @endforeach
@@ -214,33 +214,34 @@
                                         </div>
                                         <div class="col-6">
                                             <label class="form-label small mb-1">Año</label>
-                                            <select name="anio" class="form-select form-select-sm" required>
+                                            <select id="expAnio" class="form-select form-select-sm">
                                                 @foreach($anios as $a)
                                                     <option value="{{ $a }}" {{ $anio == $a ? 'selected' : '' }}>{{ $a }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
                                         <div class="col-12 mt-3">
-                                            <button type="submit" class="btn btn-success w-100"><i class="bi bi-download me-2"></i>Descargar plantilla</button>
+                                            <button type="button" class="btn btn-success w-100" onclick="window.location='{{ url('nominas/mes') }}/'+document.getElementById('expAnio').value+'/'+document.getElementById('expMes').value+'/exportar'"><i class="bi bi-download me-2"></i>Descargar Excel</button>
                                         </div>
-                                    </form>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {{-- Paso 2: subir archivo --}}
-                    <div class="card border mb-4">
+                    {{-- Subir: importar el archivo (mismo formato que se descarga) --}}
+                    <div class="card border mb-4" style="border-color:#2e7d32 !important;">
                         <div class="card-body">
-                            <h6 class="mb-3"><i class="bi bi-cloud-arrow-up me-2 text-primary"></i>Subir archivo</h6>
-                            <form method="POST" action="{{ route('nominas.importar') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                            <h6 class="mb-1"><i class="bi bi-cloud-arrow-up me-2 text-success"></i>Subir Excel (llenado)</h6>
+                            <p class="small text-muted mb-3">Sube el Excel del gestoría, o la plantilla del mes que descargaste ya rellenada (mismo formato). El sistema detecta periodo y empresa, empareja por nombre y crea las nóminas con su desglose completo. Todo-o-nada.</p>
+                            <form method="POST" action="{{ route('nominas.importar.gestoria') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
                                 @csrf
                                 <div class="col-md-9">
                                     <input type="file" name="archivo" class="form-control" accept=".xlsx,.xls" required>
-                                    <small class="text-muted">Solo Excel (.xlsx / .xls). Máximo 5MB.</small>
+                                    <small class="text-muted">Excel del gestoría (.xlsx / .xls). Máximo 5MB.</small>
                                 </div>
                                 <div class="col-md-3">
-                                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-lightning-charge me-2"></i>Procesar archivo</button>
+                                    <button type="submit" class="btn btn-success w-100"><i class="bi bi-lightning-charge me-2"></i>Importar</button>
                                 </div>
                             </form>
                         </div>

@@ -22,6 +22,7 @@ class Nomina extends Model
         'notas',
         'importacion_id',
         'enviado_at',
+        'codigo_nomina',
     ];
 
     protected $casts = [
@@ -49,6 +50,26 @@ class Nomina extends Model
     public function importacion(): BelongsTo
     {
         return $this->belongsTo(NominaImportacion::class, 'importacion_id');
+    }
+
+    public function conceptos(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NominaConcepto::class)->orderBy('orden');
+    }
+
+    public function devengos(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->conceptos()->where('tipo', NominaConcepto::TIPO_DEVENGO);
+    }
+
+    public function deducciones(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->conceptos()->where('tipo', NominaConcepto::TIPO_DEDUCCION);
+    }
+
+    public function bases(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->conceptos()->where('tipo', NominaConcepto::TIPO_BASE);
     }
 
     /**

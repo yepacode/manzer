@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\GridArrayExport;
 use App\Exports\NominasPlantillaExport;
 use App\Imports\NominasImport;
+use App\Services\GestoriaNominaExporter;
 use App\Models\Nomina;
 use App\Models\NominaImportacion;
 use App\Mail\ReciboNominaMail;
 use App\Models\Trabajador;
+use App\Services\GestoriaNominaMatcher;
+use App\Services\GestoriaNominaParser;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -206,6 +210,24 @@ class NominaImportacionController extends Controller
     }
 
     /**
+     * Exporta las nóminas de un mes al MISMO formato del gestoría (re-importable),
+     * con todos los trabajadores activos (llenos los que tienen nómina, vacíos los demás).
+     */
+    public function exportarMes(int $anio, int $mes)
+    {
+        abort_unless($mes >= 1 && $mes <= 12, 404);
+
+        $ss = (new GestoriaNominaExporter())->spreadsheet($anio, $mes);
+        $nombre = 'nominas_' . str_pad((string) $mes, 2, '0', STR_PAD_LEFT) . '_' . $anio . '.xlsx';
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $nombre, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+    }
+
+    /**
      * Lista las nóminas de un mes/año concreto (drill-down desde el Resumen).
      */
     public function porMes(int $anio, int $mes)
@@ -276,6 +298,148 @@ class NominaImportacionController extends Controller
     }
 
     /**
+     * Procesa el Excel del GESTORÍA (formato transpuesto).
+     * Crea una nómina por columna (con su código) + sus conceptos.
+     * TODO-O-NADA: si alguna columna no empareja con un trabajador, no se importa nada.
+     * El líquido se toma TAL CUAL del archivo (no se recalcula).
+     */
+    public function procesarGestoria(Request $request)
+    {
+        $request->validate([
+            'archivo' => 'required|file|mimes:xlsx,xls|max:5120',
+        ], [
+            'archivo.required' => 'Selecciona un archivo.',
+            'archivo.mimes' => 'El archivo debe ser un Excel (.xlsx o .xls).',
+        ]);
+
+        $archivo = $request->file('archivo');
+        try {
+            $parsed = (new GestoriaNominaParser())->parse($archivo->getRealPath());
+        } catch (\Throwable $e) {
+            return back()->with('import_error', 'No se pudo leer el archivo: ' . $e->getMessage());
+        }
+
+        $mes = (int) ($parsed['periodo']['mes'] ?? 0);
+        $anio = (int) ($parsed['periodo']['anio'] ?? 0);
+        if ($mes < 1 || $mes > 12 || $anio < 2000 || $anio > 2100) {
+            return back()->with('import_error', "No se pudo determinar el periodo del archivo (mes {$mes}, año {$anio}). Revisa la cabecera del Excel.");
+        }
+
+        $matched = (new GestoriaNominaMatcher())->match($parsed['trabajadores']);
+
+        $errores = [];
+        $omitidas = [];
+        $aCrear = [];
+
+        foreach ($matched as $m) {
+            $a = $m['archivo'];
+            $t = $m['trabajador'];
+
+            // Columna en blanco (trabajador sin nómina ese mes): se ignora, no es error.
+            $tieneDatos = ($a['bruto'] ?? 0) > 0 || ($a['liquido'] ?? 0) > 0 || !empty($a['conceptos']);
+            if (!$tieneDatos) {
+                continue;
+            }
+
+            if (!$t) {
+                $motivo = (($m['via'] ?? null) === 'ambiguo')
+                    ? 'Coincidencia ambigua: hay varios trabajadores con ese nombre. Revísalo o usa el alias.'
+                    : 'No se encontró trabajador en el sistema para este nombre.';
+                $errores[] = ['fila' => $a['codigo'], 'dni' => $a['nombre_completo'], 'motivo' => $motivo];
+                continue;
+            }
+
+            $existe = Nomina::where('trabajador_id', $t->id)
+                ->where('anio', $anio)->where('mes', $mes)
+                ->where('codigo_nomina', $a['codigo'])->exists();
+            if ($existe) {
+                $omitidas[] = ['fila' => $a['codigo'], 'dni' => $a['nombre_completo'], 'motivo' => "Ya existe la nómina (código {$a['codigo']}) de este trabajador en el periodo."];
+                continue;
+            }
+
+            $aCrear[] = ['t' => $t, 'a' => $a];
+        }
+
+        $totalFilas = count($aCrear) + count($omitidas) + count($errores);
+
+        // TODO-O-NADA: si hay columnas sin emparejar, no se importa nada.
+        if (!empty($errores)) {
+            NominaImportacion::create([
+                'user_id' => auth()->id(),
+                'anio' => $anio,
+                'mes' => $mes,
+                'archivo_nombre' => $archivo->getClientOriginalName(),
+                'empresa_razon' => $parsed['empresa']['razon'] ?? null,
+                'empresa_nif' => $parsed['empresa']['nif'] ?? null,
+                'origen' => 'gestoria',
+                'total_filas' => $totalFilas,
+                'creadas' => 0,
+                'omitidas' => count($omitidas),
+                'con_error' => count($errores),
+                'estado' => 'fallida',
+                'detalle' => array_merge($errores, $omitidas),
+            ]);
+
+            return back()->with('import_error', 'La carga no se realizó: hay ' . count($errores) . ' trabajador(es) del archivo sin coincidencia en el sistema. Revisa los nombres o mapéalos.')
+                ->with('import_errores', $errores);
+        }
+
+        DB::transaction(function () use ($archivo, $parsed, $anio, $mes, $aCrear, $omitidas, $totalFilas) {
+            $importacion = NominaImportacion::create([
+                'user_id' => auth()->id(),
+                'anio' => $anio,
+                'mes' => $mes,
+                'archivo_nombre' => $archivo->getClientOriginalName(),
+                'empresa_razon' => $parsed['empresa']['razon'] ?? null,
+                'empresa_nif' => $parsed['empresa']['nif'] ?? null,
+                'origen' => 'gestoria',
+                'total_filas' => $totalFilas,
+                'creadas' => count($aCrear),
+                'omitidas' => count($omitidas),
+                'con_error' => 0,
+                'estado' => empty($omitidas) ? 'procesada' : 'con_omitidas',
+                'detalle' => $omitidas,
+            ]);
+
+            foreach ($aCrear as $item) {
+                $t = $item['t'];
+                $a = $item['a'];
+
+                $nomina = Nomina::create([
+                    'trabajador_id' => $t->id,
+                    'anio' => $anio,
+                    'mes' => $mes,
+                    'salario_bruto' => $a['bruto'],
+                    'ss_empresa' => $a['ss_empresa'],
+                    'ss_trabajador' => $a['ss_trabajador'],
+                    'irpf' => $a['irpf'],
+                    'liquido' => $a['liquido'], // TAL CUAL del archivo, no se recalcula
+                    'codigo_nomina' => $a['codigo'],
+                    'importacion_id' => $importacion->id,
+                ]);
+
+                $orden = 0;
+                foreach ($a['conceptos'] as $co) {
+                    $nomina->conceptos()->create([
+                        'codigo' => $co['codigo'],
+                        'concepto' => $co['concepto'],
+                        'importe' => $co['importe'],
+                        'tipo' => $co['tipo'],
+                        'orden' => $orden++,
+                    ]);
+                }
+            }
+        });
+
+        $msg = count($aCrear) . ' nómina(s) importada(s) del gestoría (' . (Nomina::MESES[$mes] ?? $mes) . ' ' . $anio . ').';
+        if (!empty($omitidas)) {
+            $msg .= ' ' . count($omitidas) . ' omitida(s) por ya existir.';
+        }
+
+        return back()->with('import_ok', $msg);
+    }
+
+    /**
      * Bitácora: listado de todas las cargas masivas realizadas.
      */
     public function bitacora()
@@ -301,7 +465,7 @@ class NominaImportacionController extends Controller
      */
     public function recibo(Nomina $nomina)
     {
-        $nomina->load('trabajador');
+        $nomina->load('trabajador', 'conceptos', 'importacion');
 
         // Autorización: el propio trabajador o un rol de gestión
         $user = auth()->user();
@@ -360,14 +524,20 @@ class NominaImportacionController extends Controller
      */
     private function aNumero($valor): ?float
     {
-        if ($valor === null || trim((string) $valor) === '') {
+        if ($valor === null) {
             return null;
         }
-        if (is_numeric($valor)) {
+        // Números nativos de la hoja (no texto): usar tal cual, sin reinterpretar.
+        if (is_int($valor) || is_float($valor)) {
             return (float) $valor;
         }
-        $s = str_replace([' ', '.'], '', (string) $valor); // quita espacios y separador de miles
-        $s = str_replace(',', '.', $s);                     // coma decimal -> punto
+        $s = trim((string) $valor);
+        if ($s === '') {
+            return null;
+        }
+        // Texto en formato europeo: '.' = separador de miles, ',' = decimal.
+        $s = str_replace(['.', ' '], '', $s);
+        $s = str_replace(',', '.', $s);
         return is_numeric($s) ? (float) $s : null;
     }
 }

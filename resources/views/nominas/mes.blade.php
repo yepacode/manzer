@@ -16,6 +16,9 @@
                 <button type="submit" class="btn btn-success"><i class="bi bi-envelope-paper me-2"></i>Enviar recibos pendientes ({{ $nominas->whereNull('enviado_at')->count() }})</button>
             </form>
             @endif
+            <a href="{{ route('nominas.mes.exportar', [$anio, $mes]) }}" class="btn btn-outline-success">
+                <i class="bi bi-file-earmark-excel me-2"></i>Exportar Excel
+            </a>
             <a href="{{ route('nominas.resumen', ['anio' => $anio]) }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-2"></i>Volver al resumen
             </a>
@@ -50,7 +53,7 @@
                     <tr>
                         <td class="fw-medium">
                             {{ $nom->trabajador?->apellidos }}, {{ $nom->trabajador?->nombre }}
-                            <div class="small text-muted">{{ $nom->trabajador?->dni }}</div>
+                            <div class="small text-muted">{{ $nom->trabajador?->dni }}@if($nom->codigo_nomina) · ref. {{ $nom->codigo_nomina }}@endif</div>
                         </td>
                         <td class="text-end">{{ number_format($nom->salario_bruto, 2, ',', '.') }} €</td>
                         <td class="text-end">{{ number_format($nom->ss_empresa, 2, ',', '.') }} €</td>

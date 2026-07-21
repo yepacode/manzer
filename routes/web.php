@@ -111,7 +111,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', 'role:Administrador|RRHH|Contabilidad'])->group(function () {
     Route::get('nominas/plantilla', [NominaImportacionController::class, 'plantilla'])->name('nominas.plantilla');
     Route::post('nominas/importar', [NominaImportacionController::class, 'procesar'])->name('nominas.importar');
+    Route::post('nominas/importar-gestoria', [NominaImportacionController::class, 'procesarGestoria'])->name('nominas.importar.gestoria');
     Route::get('nominas/mes/{anio}/{mes}', [NominaImportacionController::class, 'porMes'])->name('nominas.mes');
+    Route::get('nominas/mes/{anio}/{mes}/exportar', [NominaImportacionController::class, 'exportarMes'])->name('nominas.mes.exportar');
     Route::post('nominas/mes/{anio}/{mes}/enviar', [NominaImportacionController::class, 'enviarMes'])->name('nominas.mes.enviar');
     Route::post('nominas/{nomina}/enviar', [NominaImportacionController::class, 'enviar'])->name('nominas.enviar');
     Route::get('nominas/bitacora', [NominaImportacionController::class, 'bitacora'])->name('nominas.bitacora');
