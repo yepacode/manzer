@@ -31,6 +31,7 @@
                         {{-- Campos ocultos para GPS --}}
                         <input type="hidden" name="latitud_entrada" id="latitud_entrada">
                         <input type="hidden" name="longitud_entrada" id="longitud_entrada">
+                        <input type="hidden" name="precision_entrada" id="precision_entrada">
 
                         <div class="row g-3">
                             <!-- Trabajador -->
@@ -204,56 +205,51 @@ document.addEventListener('DOMContentLoaded', function() {
     // Actualizar hora actual
     document.getElementById('hora_entrada').value = new Date().toTimeString().slice(0, 5);
 
-    // Obtener ubicación GPS
-    if (navigator.geolocation) {
+    // Obtener ubicación GPS (con opción de reintentar)
+    const precInput = document.getElementById('precision_entrada');
+
+    function obtenerUbicacion() {
+        if (!navigator.geolocation) {
+            gpsStatus.className = 'alert alert-danger mb-0';
+            gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> Tu navegador no soporta geolocalización. No puedes fichar sin ubicación.';
+            btnSubmit.disabled = true;
+            return;
+        }
         btnSubmit.disabled = true;
+        gpsStatus.className = 'alert alert-info mb-0';
         gpsMessage.textContent = 'Obteniendo ubicación GPS...';
 
         navigator.geolocation.getCurrentPosition(
             function(position) {
                 latInput.value = position.coords.latitude;
                 lngInput.value = position.coords.longitude;
-                gpsStatus.classList.remove('alert-info');
-                gpsStatus.classList.add('alert-success');
+                precInput.value = position.coords.accuracy || '';
+                gpsStatus.className = 'alert alert-success mb-0';
                 gpsMessage.innerHTML = '<i class="bi bi-check-circle me-1"></i> Ubicación obtenida: ' +
-                    position.coords.latitude.toFixed(6) + ', ' + position.coords.longitude.toFixed(6);
+                    position.coords.latitude.toFixed(6) + ', ' + position.coords.longitude.toFixed(6) +
+                    (position.coords.accuracy ? ' (±' + Math.round(position.coords.accuracy) + ' m)' : '');
                 btnSubmit.disabled = false;
             },
             function(error) {
-                gpsStatus.classList.remove('alert-info');
-                gpsStatus.classList.add('alert-warning');
                 let mensaje = 'No se pudo obtener la ubicación: ';
                 switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        mensaje += 'Permiso denegado. Activa la ubicación en tu navegador.';
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        mensaje += 'Ubicación no disponible.';
-                        break;
-                    case error.TIMEOUT:
-                        mensaje += 'Tiempo de espera agotado.';
-                        break;
-                    default:
-                        mensaje += 'Error desconocido.';
+                    case error.PERMISSION_DENIED: mensaje += 'Permiso denegado. Activa la ubicación en tu navegador.'; break;
+                    case error.POSITION_UNAVAILABLE: mensaje += 'Ubicación no disponible.'; break;
+                    case error.TIMEOUT: mensaje += 'Tiempo de espera agotado.'; break;
+                    default: mensaje += 'Error desconocido.';
                 }
-                gpsStatus.classList.remove('alert-warning');
-                gpsStatus.classList.add('alert-danger');
-                gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> ' + mensaje + ' No puedes fichar sin ubicación.';
-                // Ubicación OBLIGATORIA: no se permite fichar sin GPS.
+                gpsStatus.className = 'alert alert-danger mb-0';
+                gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> ' + mensaje + ' No puedes fichar sin ubicación.' +
+                    ' <button type="button" id="btnReintentarGps" class="btn btn-sm btn-outline-danger ms-2"><i class="bi bi-arrow-clockwise me-1"></i>Reintentar</button>';
                 btnSubmit.disabled = true;
+                const r = document.getElementById('btnReintentarGps');
+                if (r) r.addEventListener('click', obtenerUbicacion);
             },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
-    } else {
-        gpsStatus.classList.remove('alert-info');
-        gpsStatus.classList.add('alert-danger');
-        gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> Tu navegador no soporta geolocalización. No puedes fichar sin ubicación.';
-        btnSubmit.disabled = true;
     }
+
+    obtenerUbicacion();
     @else
     // Admin/Encargado: filtrar obras dinámicamente al seleccionar trabajador
     const selectTrabajador = document.querySelector('select[name="trabajador_id"]');

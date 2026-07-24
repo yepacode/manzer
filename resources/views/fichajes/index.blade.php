@@ -871,6 +871,16 @@ function mostrarDetalleModal(id) {
                     </div>
                 </div>
                 ` : ''}
+                ${data.ip_entrada || data.dispositivo_entrada || data.ip_salida || data.dispositivo_salida ? `
+                <div class="mt-3">
+                    <h6 class="text-muted">Dispositivo y red</h6>
+                    <div class="small text-muted">
+                        ${data.ip_entrada ? `<div><i class="bi bi-hdd-network me-1"></i>IP entrada: <strong>${data.ip_entrada}</strong>${data.precision_entrada ? ' · precisión ±' + Math.round(data.precision_entrada) + ' m' : ''}</div>` : ''}
+                        ${data.dispositivo_entrada ? `<div class="text-truncate"><i class="bi bi-phone me-1"></i>${data.dispositivo_entrada}</div>` : ''}
+                        ${data.ip_salida ? `<div class="mt-1"><i class="bi bi-hdd-network me-1"></i>IP salida: <strong>${data.ip_salida}</strong>${data.precision_salida ? ' · precisión ±' + Math.round(data.precision_salida) + ' m' : ''}</div>` : ''}
+                    </div>
+                </div>
+                ` : ''}
             `;
         })
         .catch(error => {
@@ -898,9 +908,7 @@ if (btnSalida) {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 function(position) {
-                    lat = position.coords.latitude;
-                    lng = position.coords.longitude;
-                    enviarFichajeSalida(lat, lng);
+                    enviarFichajeSalida(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
                 },
                 function(error) {
                     // Ubicación OBLIGATORIA: no se ficha sin GPS.
@@ -926,7 +934,7 @@ if (btnSalida) {
     });
 }
 
-function enviarFichajeSalida(lat, lng) {
+function enviarFichajeSalida(lat, lng, precision) {
     showLoading();
     fetch('{{ route("fichajes.check-out") }}', {
         method: 'POST',
@@ -937,7 +945,8 @@ function enviarFichajeSalida(lat, lng) {
         body: JSON.stringify({
             trabajador_id: {{ $trabajadorActual->id ?? 0 }},
             latitud: lat,
-            longitud: lng
+            longitud: lng,
+            precision: precision
         })
     })
     .then(response => {

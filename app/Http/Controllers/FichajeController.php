@@ -317,17 +317,28 @@ class FichajeController extends Controller
             'hora_salida' => 'nullable|date_format:H:i|after:hora_entrada',
             'latitud_entrada' => 'nullable|numeric',
             'longitud_entrada' => 'nullable|numeric',
+            'precision_entrada' => 'nullable|numeric',
             'notas' => 'nullable|string|max:1000',
         ]);
+
+        $user = Auth::user();
+        $esTrabajador = $user && $user->hasRole('Trabajador');
+
+        // Un trabajador solo puede fichar por SÍ MISMO (no por otro).
+        if ($esTrabajador) {
+            $trabajadorUsuario = Trabajador::where('user_id', $user->id)->first();
+            if (!$trabajadorUsuario || $trabajadorUsuario->id != $validated['trabajador_id']) {
+                return back()->withErrors(['trabajador_id' => 'No tienes permiso para fichar por este trabajador.'])->withInput();
+            }
+        }
 
         // Teléfono del trabajador (se asocia al fichaje).
         $trabajador = Trabajador::find($validated['trabajador_id']);
         $telefono = trim((string) ($trabajador->telefono ?? '')) ?: null;
 
         // Si es el propio trabajador fichando: ubicación y teléfono OBLIGATORIOS.
-        $user = Auth::user();
-        if ($user && $user->hasRole('Trabajador')) {
-            if (empty($validated['latitud_entrada']) || empty($validated['longitud_entrada'])) {
+        if ($esTrabajador) {
+            if (!is_numeric($validated['latitud_entrada'] ?? null) || !is_numeric($validated['longitud_entrada'] ?? null)) {
                 return back()->withErrors(['latitud_entrada' => 'Debes permitir la ubicación (GPS) para poder fichar.'])->withInput();
             }
             if (!$telefono) {
@@ -350,6 +361,9 @@ class FichajeController extends Controller
             'latitud_entrada' => $validated['latitud_entrada'] ?? null,
             'longitud_entrada' => $validated['longitud_entrada'] ?? null,
             'telefono_entrada' => $telefono,
+            'precision_entrada' => $validated['precision_entrada'] ?? null,
+            'ip_entrada' => $request->ip(),
+            'dispositivo_entrada' => substr((string) $request->userAgent(), 0, 255),
             'horas_trabajadas' => $horasTrabajadas,
             'horas_extra' => $horasExtra,
             'notas' => $validated['notas'] ?? null,
@@ -432,6 +446,12 @@ class FichajeController extends Controller
                 : null,
             'telefono_entrada' => $fichaje->telefono_entrada,
             'telefono_salida' => $fichaje->telefono_salida,
+            'precision_entrada' => $fichaje->precision_entrada,
+            'precision_salida' => $fichaje->precision_salida,
+            'ip_entrada' => $fichaje->ip_entrada,
+            'ip_salida' => $fichaje->ip_salida,
+            'dispositivo_entrada' => $fichaje->dispositivo_entrada,
+            'dispositivo_salida' => $fichaje->dispositivo_salida,
         ]);
     }
 
@@ -597,6 +617,7 @@ class FichajeController extends Controller
             'obra_id' => 'nullable|exists:obras,id',
             'latitud' => 'required|numeric',
             'longitud' => 'required|numeric',
+            'precision' => 'nullable|numeric',
         ], [
             'latitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
             'longitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
@@ -648,6 +669,9 @@ class FichajeController extends Controller
             'latitud_entrada' => $validated['latitud'],
             'longitud_entrada' => $validated['longitud'],
             'telefono_entrada' => $telefono,
+            'precision_entrada' => $validated['precision'] ?? null,
+            'ip_entrada' => $request->ip(),
+            'dispositivo_entrada' => substr((string) $request->userAgent(), 0, 255),
         ]);
 
         return response()->json([
@@ -666,6 +690,7 @@ class FichajeController extends Controller
             'trabajador_id' => 'required|exists:trabajadores,id',
             'latitud' => 'required|numeric',
             'longitud' => 'required|numeric',
+            'precision' => 'nullable|numeric',
         ], [
             'latitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
             'longitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
@@ -723,6 +748,9 @@ class FichajeController extends Controller
             'latitud_salida' => $validated['latitud'],
             'longitud_salida' => $validated['longitud'],
             'telefono_salida' => $telefono,
+            'precision_salida' => $validated['precision'] ?? null,
+            'ip_salida' => $request->ip(),
+            'dispositivo_salida' => substr((string) $request->userAgent(), 0, 255),
             'horas_trabajadas' => $horasTrabajadas,
             'horas_extra' => $horasExtra,
         ]);
