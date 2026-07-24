@@ -862,6 +862,15 @@ function mostrarDetalleModal(id) {
                     </div>
                 </div>
                 ` : ''}
+                ${data.telefono_entrada || data.telefono_salida ? `
+                <div class="mt-3">
+                    <h6 class="text-muted">Teléfono asociado</h6>
+                    <div class="d-flex gap-3 small">
+                        ${data.telefono_entrada ? `<span><i class="bi bi-telephone-inbound me-1 text-success"></i>Entrada: <strong>${data.telefono_entrada}</strong></span>` : ''}
+                        ${data.telefono_salida ? `<span><i class="bi bi-telephone-outbound me-1 text-danger"></i>Salida: <strong>${data.telefono_salida}</strong></span>` : ''}
+                    </div>
+                </div>
+                ` : ''}
             `;
         })
         .catch(error => {
@@ -894,13 +903,25 @@ if (btnSalida) {
                     enviarFichajeSalida(lat, lng);
                 },
                 function(error) {
-                    // Fichar sin GPS si hay error
-                    enviarFichajeSalida(null, null);
+                    // Ubicación OBLIGATORIA: no se ficha sin GPS.
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Ubicación requerida',
+                        text: 'Debes permitir la ubicación (GPS) para poder fichar la salida.',
+                    });
+                    btnSalida.disabled = false;
+                    btnSalida.innerHTML = '<i class="bi bi-box-arrow-right me-2"></i>Fichar Salida';
                 },
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         } else {
-            enviarFichajeSalida(null, null);
+            Swal.fire({
+                icon: 'error',
+                title: 'Sin geolocalización',
+                text: 'Tu navegador no soporta geolocalización. No puedes fichar sin ubicación.',
+            });
+            btnSalida.disabled = false;
+            btnSalida.innerHTML = '<i class="bi bi-box-arrow-right me-2"></i>Fichar Salida';
         }
     });
 }

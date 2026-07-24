@@ -236,9 +236,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     default:
                         mensaje += 'Error desconocido.';
                 }
-                gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> ' + mensaje;
-                // Permitir fichar aunque no haya GPS
-                btnSubmit.disabled = false;
+                gpsStatus.classList.remove('alert-warning');
+                gpsStatus.classList.add('alert-danger');
+                gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> ' + mensaje + ' No puedes fichar sin ubicación.';
+                // Ubicación OBLIGATORIA: no se permite fichar sin GPS.
+                btnSubmit.disabled = true;
             },
             {
                 enableHighAccuracy: true,
@@ -248,8 +250,9 @@ document.addEventListener('DOMContentLoaded', function() {
         );
     } else {
         gpsStatus.classList.remove('alert-info');
-        gpsStatus.classList.add('alert-warning');
-        gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> Tu navegador no soporta geolocalización.';
+        gpsStatus.classList.add('alert-danger');
+        gpsMessage.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> Tu navegador no soporta geolocalización. No puedes fichar sin ubicación.';
+        btnSubmit.disabled = true;
     }
     @else
     // Admin/Encargado: filtrar obras dinámicamente al seleccionar trabajador

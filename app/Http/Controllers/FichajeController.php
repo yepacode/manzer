@@ -320,6 +320,21 @@ class FichajeController extends Controller
             'notas' => 'nullable|string|max:1000',
         ]);
 
+        // Teléfono del trabajador (se asocia al fichaje).
+        $trabajador = Trabajador::find($validated['trabajador_id']);
+        $telefono = trim((string) ($trabajador->telefono ?? '')) ?: null;
+
+        // Si es el propio trabajador fichando: ubicación y teléfono OBLIGATORIOS.
+        $user = Auth::user();
+        if ($user && $user->hasRole('Trabajador')) {
+            if (empty($validated['latitud_entrada']) || empty($validated['longitud_entrada'])) {
+                return back()->withErrors(['latitud_entrada' => 'Debes permitir la ubicación (GPS) para poder fichar.'])->withInput();
+            }
+            if (!$telefono) {
+                return back()->withErrors(['telefono' => 'No tienes un teléfono registrado en tu ficha. Contacta con RRHH para poder fichar.'])->withInput();
+            }
+        }
+
         // Calcular horas trabajadas con configuración
         [$horasTrabajadas, $horasExtra] = $this->calcularHoras(
             $validated['hora_entrada'] ?? null,
@@ -334,6 +349,7 @@ class FichajeController extends Controller
             'hora_salida' => $validated['hora_salida'] ?? null,
             'latitud_entrada' => $validated['latitud_entrada'] ?? null,
             'longitud_entrada' => $validated['longitud_entrada'] ?? null,
+            'telefono_entrada' => $telefono,
             'horas_trabajadas' => $horasTrabajadas,
             'horas_extra' => $horasExtra,
             'notas' => $validated['notas'] ?? null,
@@ -414,6 +430,8 @@ class FichajeController extends Controller
             'ubicacion_salida' => $fichaje->latitud_salida && $fichaje->longitud_salida
                 ? ['lat' => $fichaje->latitud_salida, 'lng' => $fichaje->longitud_salida]
                 : null,
+            'telefono_entrada' => $fichaje->telefono_entrada,
+            'telefono_salida' => $fichaje->telefono_salida,
         ]);
     }
 
@@ -577,8 +595,11 @@ class FichajeController extends Controller
         $validated = $request->validate([
             'trabajador_id' => 'required|exists:trabajadores,id',
             'obra_id' => 'nullable|exists:obras,id',
-            'latitud' => 'nullable|numeric',
-            'longitud' => 'nullable|numeric',
+            'latitud' => 'required|numeric',
+            'longitud' => 'required|numeric',
+        ], [
+            'latitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
+            'longitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
         ]);
 
         // Validar que el usuario tenga permiso para fichar por este trabajador
@@ -591,6 +612,16 @@ class FichajeController extends Controller
                     'message' => 'No tienes permiso para fichar por este trabajador.',
                 ], 403);
             }
+        }
+
+        // Teléfono OBLIGATORIO: se toma de la ficha del trabajador.
+        $trabajador = Trabajador::find($validated['trabajador_id']);
+        $telefono = trim((string) ($trabajador->telefono ?? ''));
+        if ($telefono === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes un teléfono registrado en tu ficha. Contacta con RRHH para poder fichar.',
+            ], 422);
         }
 
         $hoy = now()->toDateString();
@@ -614,8 +645,9 @@ class FichajeController extends Controller
             'obra_id' => $validated['obra_id'] ?? null,
             'fecha' => $hoy,
             'hora_entrada' => now()->format('H:i'),
-            'latitud_entrada' => $validated['latitud'] ?? null,
-            'longitud_entrada' => $validated['longitud'] ?? null,
+            'latitud_entrada' => $validated['latitud'],
+            'longitud_entrada' => $validated['longitud'],
+            'telefono_entrada' => $telefono,
         ]);
 
         return response()->json([
@@ -632,8 +664,11 @@ class FichajeController extends Controller
     {
         $validated = $request->validate([
             'trabajador_id' => 'required|exists:trabajadores,id',
-            'latitud' => 'nullable|numeric',
-            'longitud' => 'nullable|numeric',
+            'latitud' => 'required|numeric',
+            'longitud' => 'required|numeric',
+        ], [
+            'latitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
+            'longitud.required' => 'Debes permitir la ubicación (GPS) para poder fichar.',
         ]);
 
         // Validar que el usuario tenga permiso para fichar por este trabajador
@@ -646,6 +681,16 @@ class FichajeController extends Controller
                     'message' => 'No tienes permiso para fichar por este trabajador.',
                 ], 403);
             }
+        }
+
+        // Teléfono OBLIGATORIO: se toma de la ficha del trabajador.
+        $trabajador = Trabajador::find($validated['trabajador_id']);
+        $telefono = trim((string) ($trabajador->telefono ?? ''));
+        if ($telefono === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes un teléfono registrado en tu ficha. Contacta con RRHH para poder fichar.',
+            ], 422);
         }
 
         $hoy = now()->toDateString();
@@ -675,8 +720,9 @@ class FichajeController extends Controller
 
         $fichaje->update([
             'hora_salida' => $salida->format('H:i'),
-            'latitud_salida' => $validated['latitud'] ?? null,
-            'longitud_salida' => $validated['longitud'] ?? null,
+            'latitud_salida' => $validated['latitud'],
+            'longitud_salida' => $validated['longitud'],
+            'telefono_salida' => $telefono,
             'horas_trabajadas' => $horasTrabajadas,
             'horas_extra' => $horasExtra,
         ]);
